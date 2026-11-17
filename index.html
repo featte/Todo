@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Todo</title>
+<meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f5f6fb;--card:#fff;--ink:#1f2333;--muted:#7a7f94;--accent:#4f46e5;--danger:#e5484d;--ok:#16a34a}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--accent);color:#fff;padding:16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+header h1{font-size:20px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:10px;padding:8px 12px;font-size:15px}
+main{padding:16px;max-width:640px;margin:auto;padding-bottom:100px}
+.cats{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cat{background:var(--card);border-radius:16px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.06);border:0;text-align:left;font-size:17px;font-weight:600;color:var(--ink)}
+.cat .ico{font-size:30px;display:block;margin-bottom:6px}
+.cat small{display:block;color:var(--muted);font-weight:400;margin-top:4px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.row{display:flex;align-items:center;gap:10px}
+.grow{flex:1;min-width:0}
+.title{font-weight:600;font-size:16px}
+.muted{color:var(--muted);font-size:13px}
+.btn{border:0;border-radius:10px;padding:10px 14px;font-size:15px;background:#e8e9f3;color:var(--ink)}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.small{padding:6px 10px;font-size:13px}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.fab{position:fixed;right:20px;bottom:24px;background:var(--accent);color:#fff;border:0;border-radius:30px;padding:14px 20px;font-size:16px;box-shadow:0 6px 16px rgba(79,70,229,.4);display:none}
+.task.done .ttext{text-decoration:line-through;color:var(--muted)}
+.ttext{word-wrap:break-word;white-space:pre-wrap}
+input[type=text],input[type=datetime-local],select,textarea{width:100%;padding:12px;border:1px solid #d8dae6;border-radius:10px;font-size:16px;font-family:inherit;background:#fff}
+textarea{min-height:70px}
+input[type=checkbox]{width:24px;height:24px;flex:none}
+audio{width:100%;margin-top:8px;height:40px}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:20}
+.modal-bg.show{display:flex}
+.modal{background:#fff;width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:18px;max-height:92vh;overflow:auto}
+.modal h2{margin:0 0 8px;font-size:18px}
+label{display:block;font-size:13px;color:var(--muted);margin:14px 0 4px}
+.rec{background:var(--danger)!important;color:#fff!important}
+.bell{color:#d97706;font-size:13px}
+.alarm{position:fixed;inset:0;background:var(--accent);color:#fff;display:none;flex-direction:column;align-items:center;justify-content:center;z-index:50;text-align:center;padding:24px}
+.alarm.show{display:flex}
+.alarm h2{font-size:28px;margin:10px 0;word-break:break-word}
+.alarm .btn{font-size:18px;padding:14px 22px;margin:6px}
+.empty{text-align:center;color:var(--muted);padding:40px 10px}
+.banner{background:#fff7e6;border:1px solid #f5d38a;padding:12px;border-radius:12px;font-size:14px;margin-bottom:14px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;display:none;z-index:60;max-width:90%}
+h3{font-size:15px;margin:22px 0 8px}
+</style>
+</head>
+<body>
+
+<header>
+  <button id="back" onclick="goBack()">←</button>
+  <h1 id="htitle">My Todo</h1>
+</header>
+
+<main id="main"></main>
+<button class="fab" id="fab"></button>
+
+<!-- Pop-up box used for adding/editing lists and tasks -->
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<!-- Full-screen alarm when a reminder is due -->
+<div class="alarm" id="alarm">
+  <div style="font-size:60px">⏰</div>
+  <h2 id="alTitle"></h2>
+  <div id="alSub" style="opacity:.85"></div>
+  <div style="margin-top:24px">
+    <button class="btn" onclick="alarmSnooze()">😴 Snooze 5 min</button>
+    <button class="btn primary" style="background:#fff;color:var(--accent)" onclick="alarmDone()">✅ OK, stop</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   1. SETTINGS
+   ========================================================= */
+const CATS = [
+  {id:'work',      name:'Work',      ico:'💼'},
+  {id:'home',      name:'Home',      ico:'🏠'},
+  {id:'groceries', name:'Groceries', ico:'🛒'},
+  {id:'personal',  name:'Personal',  ico:'🙋'},
+  {id:'family',    name:'Family',    ico:'👨‍👩‍👦'}
+];
+const MAX_TASKS = 20;          // max tasks in one list
+const SNOOZE_MIN = 5;          // snooze length in minutes
+
+/* =========================================================
+   2. SAVING DATA (text in localStorage, voice notes in IndexedDB)
+   ========================================================= */
+let data = {lists: []};
+let view = {page:'home', cat:null, listId:null};
+
+try { data = JSON.parse(localStorage.getItem('mytodo_v1')) || {lists: []}; } catch(e) {}
+
+function save(){
+  try { localStorage.setItem('mytodo_v1', JSON.stringify(data)); }
+  catch(e){ toast('Could not save – phone storage may be full'); }
+}
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = s => document.querySelector(s);
+
+// Voice notes are big, so they go into IndexedDB (a bigger storage box in the browser)
+const dbP = new Promise((res, rej) => {
+  try {
+    const r = indexedDB.open('mytodo_audio', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('a');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  } catch(e){ rej(e); }
+});
+async function putAudio(id, blob){
+  const db = await dbP;
+  return new Promise((res, rej) => {
+    const t = db.transaction('a','readwrite');
+    t.objectStore('a').put(blob, id);
+    t.oncomplete = res; t.onerror = () => rej(t.error);
+  });
+}
+async function getAudio(id){
+  try {
+    const db = await dbP;
+    return await new Promise(res => {
+      const r = db.transaction('a').objectStore('a').get(id);
+      r.onsuccess = () => res(r.result); r.onerror = () => res(null);
+    });
+  } catch(e){ return null; }
+}
+async function delAudio(id){
+  if(!id) return;
+  try { const db = await dbP; db.transaction('a','readwrite').objectStore('a').delete(id); } catch(e){}
+}
+
+/* =========================================================
+   3. HELPERS
+   ========================================================= */
+const getList = id => data.lists.find(l => l.id === id);
+const catOf = id => CATS.find(c => c.id === id);
+function fmt(ts){
+  return new Date(ts).toLocaleString([], {day:'numeric', month:'short', hour:'numeric', minute:'2-digit'});
+}
+function toLocalInput(ts){            // turns a time into the format the date box needs
+  if(!ts) return '';
+  const d = new Date(ts);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0,16);
+}
+let toastTimer;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = 'none', 3000);
+}
+
+/* =========================================================
+   4. SCREENS (home → category → list)
+   ========================================================= */
+function render(){
+  const main = $('#main'), h = $('#htitle'), back = $('#back'), fab = $('#fab');
+
+  // ---------- HOME: pick a category ----------
+  if(view.page === 'home'){
+    h.textContent = 'My Todo';
+    back.style.visibility = 'hidden';
+    fab.style.display = 'none';
+    main.innerHTML =
+      notifBanner() +
+      '<p class="muted">Select a category</p><div class="cats">' +
+      CATS.map(c => {
+        const n = data.lists.filter(l => l.cat === c.id).length;
+        return `<button class="cat" onclick="openCat('${c.id}')"><span class="ico">${c.ico}</span>${c.name}<small>${n} list${n==1?'':'s'}</small></button>`;
+      }).join('') + '</div>' + upcomingHtml();
+    return;
+  }
+
+  // ---------- CATEGORY: all lists inside (e.g. "Mr DIY") ----------
+  if(view.page === 'cat'){
+    const c = catOf(view.cat);
+    h.textContent = c.ico + ' ' + c.name;
+    back.style.visibility = 'visible';
+    fab.style.display = 'block';
+    fab.textContent = '+ New list';
+    fab.onclick = () => listModal();
+    const lists = data.lists.filter(l => l.cat === view.cat);
+    main.innerHTML = lists.length
+      ? lists.map(l => {
+          const done = l.tasks.filter(t => t.done).length;
+          return `<div class="card row">
+            <div class="grow" onclick="openList('${l.id}')">
+              <div class="title">${esc(l.title)}</div>
+              <div class="muted">${done}/${l.tasks.length} done
+                ${l.remindAt ? '<span class="bell"> · ⏰ ' + fmt(l.remindAt) + '</span>' : ''}</div>
+            </div>
+            <button class="btn small" onclick="listModal('${l.id}')">Edit</button>
+          </div>`;
+        }).join('')
+      : '<div class="empty">No lists yet.<br>Tap “+ New list” (e.g. <b>Mr DIY</b>).</div>';
+    return;
+  }
+
+  // ---------- LIST: the tasks ----------
+  const l = getList(view.listId);
+  if(!l){ view.page = 'cat'; return render(); }
+  h.textContent = l.title;
+  back.style.visibility = 'visible';
+  fab.style.display = 'block';
+  fab.textContent = `+ Add task (${l.tasks.length}/${MAX_TASKS})`;
+  fab.onclick = () => taskModal();
+  main.innerHTML = l.tasks.length
+    ? l.tasks.map(t => `
+      <div class="card task ${t.done ? 'done' : ''}">
+        <div class="row">
+          <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTask('${t.id}')">
+          <div class="grow">
+            <div class="ttext">${t.text ? esc(t.text) : '🎤 Voice note'}</div>
+            ${t.remindAt ? `<div class="bell">⏰ ${fmt(t.remindAt)}</div>` : ''}
+          </div>
+          <button class="btn small" onclick="taskModal('${t.id}')">Edit</button>
+        </div>
+        ${t.audioId ? `<audio controls data-aid="${t.audioId}"></audio>` : ''}
+      </div>`).join('')
+    : '<div class="empty">No tasks yet.<br>Tap “+ Add task”. Type it, record it, or both.</div>';
+  loadAudios();
+}
+
+async function loadAudios(){
+  for(const el of document.querySelectorAll('audio[data-aid]')){
+    const b = await getAudio(el.dataset.aid);
+    if(b) el.src = URL.createObjectURL(b);
+  }
+}
+
+function openCat(id){ view = {page:'cat', cat:id, listId:null}; render(); }
+function openList(id){ view.page = 'list'; view.listId = id; render(); }
+function goBack(){
+  if(view.page === 'list') view.page = 'cat';
+  else view.page = 'home';
+  render();
+}
+
+// "Coming up" box on the home screen
+function upcomingHtml(){
+  const items = [];
+  for(const l of data.lists){
+    if(l.remindAt && !l.fired) items.push({ts:l.remindAt, text:l.title, sub:catOf(l.cat).name, id:l.id});
+    for(const t of l.tasks) if(t.remindAt && !t.fired && !t.done)
+      items.push({ts:t.remindAt, text:t.text || '🎤 Voice note', sub:l.title, id:l.id});
+  }
+  if(!items.length) return '';
+  items.sort((a,b) => a.ts - b.ts);
+  return '<h3>⏰ Coming up</h3>' + items.slice(0,5).map(i =>
+    `<div class="card" onclick="view.cat=getList('${i.id}').cat;openList('${i.id}')">
+       <div class="title">${esc(i.text)}</div>
+       <div class="muted">${esc(i.sub)} · ${fmt(i.ts)}</div></div>`).join('');
+}
+
+/* =========================================================
+   5. LISTS: create / edit / delete
+   ========================================================= */
+function listModal(id){
+  const l = id ? getList(id) : null;
+  openModal(`
+    <h2>${l ? 'Edit list' : 'New list'}</h2>
+    <label>List name (e.g. Mr DIY)</label>
+    <input type="text" id="lTitle" value="${esc(l ? l.title : '')}" placeholder="Mr DIY">
+    <label>Category</label>
+    <select id="lCat">${CATS.map(c => `<option value="${c.id}" ${(l ? l.cat : view.cat) === c.id ? 'selected' : ''}>${c.ico} ${c.name}</option>`).join('')}</select>
+    <label>Reminder for the whole list (optional)</label>
+    <input type="datetime-local" id="lWhen" value="${toLocalInput(l && l.remindAt)}">
+    <div class="btns">
+      <button class="btn primary" onclick="saveList('${id || ''}')">Save</button>
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      ${l && l.remindAt ? `<button class="btn" onclick="calFor('list','${l.id}')">📅 Add to phone calendar</button>` : ''}
+      ${l ? `<button class="btn danger" onclick="deleteList('${l.id}')">Delete list</button>` : ''}
+    </div>`);
+  setTimeout(() => $('#lTitle').focus(), 100);
+}
+
+function saveList(id){
+  const title = $('#lTitle').value.trim();
+  if(!title) return toast('Please type a list name');
+  const when = $('#lWhen').value;
+  const newR = when ? new Date(when).getTime() : null;
+  let l = id ? getList(id) : null;
+  if(!l){
+    l = {id:uid(), cat:$('#lCat').value, title, remindAt:null, fired:false, tasks:[]};
+    data.lists.push(l);
+  }
+  l.title = title;
+  l.cat = $('#lCat').value;
+  if(newR !== l.remindAt){ l.remindAt = newR; l.fired = false; }
+  save(); closeModal();
+  view.cat = l.cat;
+  if(!id) openList(l.id); else render();
+  if(newR) askNotifPermission();
+}
+
+async function deleteList(id){
+  if(!confirm('Delete this list and all its tasks?')) return;
+  const l = getList(id);
+  for(const t of l.tasks) await delAudio(t.audioId);
+  data.lists = data.lists.filter(x => x.id !== id);
+  save(); closeModal(); view.page = 'cat'; render();
+}
+
+/* =========================================================
+   6. TASKS: create / edit / delete (text, voice, or both)
+   ========================================================= */
+let editingTask = null;   // id of task being edited (null = new)
+let draftAudio = null;    // {id} = old recording, {blob} = new recording, null = none
+let rec = null, chunks = [];
+
+function taskModal(id){
+  const l = getList(view.listId);
+  const t = id ? l.tasks.find(x => x.id === id) : null;
+  if(!t && l.tasks.length >= MAX_TASKS) return toast(`Max ${MAX_TASKS} tasks per list`);
+  editingTask = id || null;
+  draftAudio = t && t.audioId ? {id:t.audioId} : null;
+  openModal(`
+    <h2>${t ? 'Edit task' : 'New task'}</h2>
+    <label>Type your task (optional if you record)</label>
+    <textarea id="tText" placeholder="e.g. Buy 2 light bulbs">${esc(t ? t.text : '')}</textarea>
+    <label>Voice note (optional)</label>
+    <div class="btns" style="margin-top:0">
+      <button class="btn" id="recBtn" onclick="toggleRec()">🎤 ${draftAudio ? 'Record again' : 'Record'}</button>
+      <label class="btn" style="margin:0;color:var(--ink);font-size:15px">📁 Pick audio file
+        <input type="file" accept="audio/*" capture style="display:none" onchange="pickAudio(this)"></label>
+      <button class="btn danger" id="rmAud" style="display:${draftAudio ? 'inline-block' : 'none'}" onclick="removeAudio()">Remove voice</button>
+    </div>
+    <audio id="audPrev" controls style="display:none"></audio>
+    <label>Reminder / alarm (optional)</label>
+    <input type="datetime-local" id="tWhen" value="${toLocalInput(t && t.remindAt)}">
+    <div class="btns">
+      <button class="btn primary" onclick="saveTask()">Save</button>
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      ${t && t.remindAt ? `<button class="btn" onclick="calFor('task','${t.id}')">📅 Add to phone calendar</button>` : ''}
+      ${t ? `<button class="btn danger" onclick="deleteTask('${t.id}')">Delete task</button>` : ''}
+    </div>`);
+  if(draftAudio && draftAudio.id){
+    getAudio(draftAudio.id).then(b => { if(b){ const p = $('#audPrev'); p.src = URL.createObjectURL(b); p.style.display = 'block'; } });
+  }
+}
+
+// Record with the microphone
+async function toggleRec(){
+  const b = $('#recBtn');
+  if(rec && rec.state === 'recording'){ rec.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    rec = new MediaRecorder(stream); chunks = [];
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = () => {
+      stream.getTracks().forEach(tr => tr.stop());
+      setDraftAudio(new Blob(chunks, {type: rec.mimeType || 'audio/webm'}));
+      b.textContent = '🎤 Record again'; b.classList.remove('rec');
+    };
+    rec.start();
+    b.textContent = '⏹ Stop recording'; b.classList.add('rec');
+  } catch(e){
+    toast('Microphone not allowed here. Use “Pick audio file” instead.');
+  }
+}
+function pickAudio(input){ if(input.files[0]) setDraftAudio(input.files[0]); }
+function setDraftAudio(blob){
+  draftAudio = {blob};
+  const p = $('#audPrev'); p.src = URL.createObjectURL(blob); p.style.display = 'block';
+  $('#rmAud').style.display = 'inline-block';
+}
+function removeAudio(){
+  draftAudio = null;
+  const p = $('#audPrev'); p.removeAttribute('src'); p.style.display = 'none';
+  $('#rmAud').style.display = 'none';
+  $('#recBtn').textContent = '🎤 Record';
+}
+
+async function saveTask(){
+  if(rec && rec.state === 'recording') return toast('Stop the recording first');
+  const l = getList(view.listId);
+  const text = $('#tText').value.trim();
+  const when = $('#tWhen').value;
+  const hasAudio = !!draftAudio;
+  if(!text && !hasAudio) return toast('Type something or record a voice note');
+
+  let t = editingTask ? l.tasks.find(x => x.id === editingTask) : null;
+  if(!t){ t = {id:uid(), done:false, text:'', audioId:null, remindAt:null, fired:false}; l.tasks.push(t); }
+  t.text = text;
+
+  if(draftAudio && draftAudio.blob){             // new recording
+    await delAudio(t.audioId);
+    t.audioId = uid();
+    try { await putAudio(t.audioId, draftAudio.blob); }
+    catch(e){ t.audioId = null; toast('Could not save voice note'); }
+  } else if(!hasAudio && t.audioId){             // voice removed
+    await delAudio(t.audioId); t.audioId = null;
+  }
+
+  const newR = when ? new Date(when).getTime() : null;
+  if(newR !== t.remindAt){ t.remindAt = newR; t.fired = false; }
+
+  save(); closeModal(); render();
+  if(newR) askNotifPermission();
+}
+
+async function deleteTask(id){
+  if(!confirm('Delete this task?')) return;
+  const l = getList(view.listId);
+  const t = l.tasks.find(x => x.id === id);
+  await delAudio(t.audioId);
+  l.tasks = l.tasks.filter(x => x.id !== id);
+  save(); closeModal(); render();
+}
+
+function toggleTask(id){
+  const t = getList(view.listId).tasks.find(x => x.id === id);
+  t.done = !t.done; save(); render();
+}
+
+/* =========================================================
+   7. POP-UP BOX
+   ========================================================= */
+function openModal(html){ $('#modalBox').innerHTML = html; $('#modalBg').classList.add('show'); }
+function closeModal(){
+  if(rec && rec.state === 'recording') rec.stop();
+  $('#modalBg').classList.remove('show');
+}
+
+/* =========================================================
+   8. REMINDERS, ALARM SOUND & PUSH NOTIFICATIONS
+   ========================================================= */
+// Checks every 10 seconds if anything is due
+function checkReminders(){
+  const now = Date.now(); let changed = false;
+  for(const l of data.lists){
+    if(l.remindAt && !l.fired && l.remindAt <= now){
+      l.fired = true; changed = true;
+      fireAlarm(l.title, catOf(l.cat).name + ' list', l.id, null);
+    }
+    for(const t of l.tasks){
+      if(t.remindAt && !t.fired && !t.done && t.remindAt <= now){
+        t.fired = true; changed = true;
+        fireAlarm(t.text || '🎤 Voice note', l.title, l.id, t.id);
+      }
+    }
+  }
+  if(changed){ save(); render(); }
+}
+setInterval(checkReminders, 10000);
+document.addEventListener('visibilitychange', () => { if(!document.hidden) checkReminders(); });
+
+let alarmQ = [], beepTimer = null, actx = null;
+function fireAlarm(title, sub, listId, taskId){
+  alarmQ.push({title, sub, listId, taskId});
+  notify(title, sub);
+  if(alarmQ.length === 1) showAlarm();
+}
+function showAlarm(){
+  const a = alarmQ[0];
+  if(!a){ $('#alarm').classList.remove('show'); stopBeep(); return; }
+  $('#alTitle').textContent = a.title;
+  $('#alSub').textContent = a.sub;
+  $('#alarm').classList.add('show');
+  startBeep();
+}
+function startBeep(){
+  stopBeep();
+  const beep = () => {
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(actx.destination);
+      g.gain.setValueAtTime(0.3, actx.currentTime);
+      o.start(); o.stop(actx.currentTime + 0.4);
+    } catch(e){}
+    if(navigator.vibrate) navigator.vibrate(400);
+  };
+  beep(); beepTimer = setInterval(beep, 1000);
+}
+function stopBeep(){ clearInterval(beepTimer); }
+function alarmDone(){ alarmQ.shift(); showAlarm(); }
+function alarmSnooze(){
+  const a = alarmQ[0], l = getList(a.listId);
+  const target = a.taskId ? (l && l.tasks.find(t => t.id === a.taskId)) : l;
+  if(target){ target.remindAt = Date.now() + SNOOZE_MIN*60000; target.fired = false; save(); render(); }
+  toast(`Snoozed ${SNOOZE_MIN} minutes`);
+  alarmDone();
+}
+// Phones only allow sound after the first tap, so we "wake up" the sound on first tap
+document.addEventListener('click', () => {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch(e){}
+}, {once:true});
+
+// Push notification (shows in the phone's notification bar)
+let swReg = null;
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(r => swReg = r).catch(() => {});
+}
+function notify(title, body){
+  try {
+    if(!('Notification' in window) || Notification.permission !== 'granted') return;
+    const opts = {body, icon:'icon-192.png', vibrate:[300,100,300], requireInteraction:true, tag:uid()};
+    if(swReg) swReg.showNotification('⏰ ' + title, opts);
+    else new Notification('⏰ ' + title, opts);
+  } catch(e){}
+}
+function notifBanner(){
+  if(!('Notification' in window)) return '';
+  if(Notification.permission === 'granted') return '';
+  if(Notification.permission === 'denied')
+    return '<div class="banner">🔕 Notifications are blocked. Turn them on in your browser settings for this site.</div>';
+  return '<div class="banner">🔔 Turn on notifications so reminders pop up on your phone.<br><button class="btn primary small" style="margin-top:8px" onclick="askNotifPermission()">Turn on</button></div>';
+}
+async function askNotifPermission(){
+  try {
+    if('Notification' in window && Notification.permission === 'default'){
+      await Notification.requestPermission(); render();
+    }
+  } catch(e){}
+}
+
+// Real phone alarm even when the app is closed: save to phone calendar (.ics file)
+function calFor(kind, id){
+  let title, desc, ts;
+  if(kind === 'list'){ const l = getList(id); title = l.title; desc = catOf(l.cat).name + ' list'; ts = l.remindAt; }
+  else { const l = getList(view.listId); const t = l.tasks.find(x => x.id === id); title = t.text || 'Voice note'; desc = l.title; ts = t.remindAt; }
+  const f = d => new Date(d).toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z';
+  const clean = s => String(s).replace(/([,;\\])/g,'\\$1').replace(/\n/g,'\\n');
+  const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//MyTodo//EN','BEGIN:VEVENT',
+    'UID:' + uid() + '@mytodo','DTSTAMP:' + f(Date.now()),'DTSTART:' + f(ts),'DTEND:' + f(ts + 15*60000),
+    'SUMMARY:' + clean(title),'DESCRIPTION:' + clean(desc),
+    'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:' + clean(title),'TRIGGER:PT0M','END:VALARM',
+    'END:VEVENT','END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ics], {type:'text/calendar'}));
+  a.download = 'reminder.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* =========================================================
+   9. START
+   ========================================================= */
+render();
+checkReminders();
+</script>
+</body>
+</html>
